@@ -1,0 +1,21 @@
+refresh_rate: 30 seconds
+appenders:
+  stdout:
+    kind: console
+#  rolling:
+#    kind: rolling_file
+#    path: "logs/log.log"
+#    policy:
+#      trigger:
+#        kind: size
+#        limit: 10mb
+#      roller:
+#        kind: fixed_window
+#        path: "log/log_{}.log"
+#        count: 5
+#        base: 1
+root:
+  level: info
+  appenders:
+    - stdout
+#    - rolling
