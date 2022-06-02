@@ -1,51 +1,33 @@
-use crate::db;
+use std::error::Error;
+use tokio::net::TcpStream;
+use tokio::io::AsyncReadExt;
 
-#[derive(Debug, Clone)]
+// #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+// #[repr(u8)]
+// #[non_exhaustive]
+// pub enum Dimension {
+//     Overworld,
+//     Nether,
+//     End,
+// }
+
+
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct Computer {
-    pub id: i64,
-    pub chunk_x: i64,
-    pub chunk_y: i64,
+    pub world: u16,     // which (Minecraft) server
+    pub dimension: u8,  // the dimension (Overworld, End, Nether)
+    pub chunk_x: i32,
+    pub chunk_y: i32,
 }
 
 impl Computer {
-    pub async fn insert(&mut self, is_online: bool) -> Result<(), sqlx::Error> {
-        let query_result = sqlx::query!(
-            "INSERT INTO computer (\
-                chunk_x,\
-                chunk_y,\
-                is_online\
-            ) VALUES (?, ?, ?)",
-            self.chunk_x,
-            self.chunk_y,
-            is_online,
-        )
-            .execute(db::pool().await)
-            .await?;
+    pub async fn from_socket(socket : &mut TcpStream) -> Result<Self, Box<dyn Error>> {
 
-        self.id = query_result.last_insert_rowid();
-
-        Ok(())
-    }
-
-    pub async fn set_online(&self, is_online: bool) -> Result<(), sqlx::Error> {
-        sqlx::query!(
-            "UPDATE computer
-             SET is_online = ?
-             WHERE id = ?",
-            is_online,
-            self.id,
-        )
-            .execute(db::pool().await)
-            .await?;
-        Ok(())
-    }
-
-    // Sets the online status of all computers
-    pub async fn set_online_all(is_online: bool) -> Result<(), sqlx::Error> {
-        sqlx::query!("UPDATE computer SET is_online = ?", is_online)
-            .execute(db::pool().await)
-            .await?;
-
-        Ok(())
+        Ok (Self {
+            world : socket.read_u16().await?,
+            dimension: socket.read_u8().await?,
+            chunk_x: socket.read_i32().await?,
+            chunk_y: socket.read_i32().await?
+        })
     }
 }
