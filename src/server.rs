@@ -1,7 +1,8 @@
 use std::error::Error;
+use std::time::Duration;
 
 use log::{info, warn};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
 
 use crate::Computer;
@@ -14,6 +15,8 @@ impl Server {
     }
 
     async fn handle_connection(&self, mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
+        info!("Handling new connection");
+
         let computer = {
             let mut computer = Computer {
                 id: socket.read_i64().await?,
@@ -44,41 +47,53 @@ impl Server {
         // In a loop, read data from the socket and write the data back.
         loop {
             let mut buf = [0; 128];
+            let read_fut = tokio::time::timeout(
+                Duration::from_secs(2),
+                socket.read(&mut buf),
+            ).await;
 
-            match socket.read(&mut buf).await {
-                // socket closed
-                Ok(n) if n == 0 => {
-                    warn!("socket closed by client {:?}", computer);
-                    cleanup().await?;
-                    return Ok(());
+            match read_fut {
+                // timeout elapsed
+                Err(_) => {
+                    info!("Timeout elapsed, polling: {:?}", computer);
+                    break;
                 }
-                Err(e) => {
-                    warn!("failed to read from socket ({:?}); err = {:?}", computer, e);
-                    cleanup().await?;
-                    return Ok(());
-                }
-                Ok(_) => {
-                    info!("POLL from {:?}", computer);
-                    ()
+
+                Ok(r) => match r {
+                    // socket closed
+                    Ok(n) if n == 0 => {
+                        warn!("socket closed by client {:?}", computer);
+                        break;
+                    }
+
+                    Err(e) => {
+                        warn!("failed to read from socket ({:?}); err = {:?}", computer, e);
+                        break;
+                    }
+                    Ok(_) => {
+                        info!("POLL from {:?}", computer);
+                    }
                 }
             };
 
-            // Write the data back
-            if let Err(e) = socket.write_u8(1).await {
-                warn!("failed to write to socket ({:?}); err = {:?}", computer, e);
-
-                cleanup().await?;
-                return Ok(());
-            }
+            // let send_buf = [0; 256];
+            //
+            // // Try to write some data, to check the socket is still available
+            // if let Err(e) = socket.write_all(&send_buf).await {
+            //     warn!("failed to write to socket ({:?}); err = {:?}", computer, e);
+            //     break;
+            // }
         }
+        cleanup().await?;
+        Ok(())
     }
 
     pub async fn run(addr: impl ToSocketAddrs) -> Result<(), Box<dyn Error>> {
-        let server_box = Box::new(Server::new());
-        let server = Box::leak(server_box);
-
         let listener = TcpListener::bind(addr).await?;
         info!("Bound socket to {}", listener.local_addr()?);
+
+        let server_box = Box::new(Server::new());
+        let server = Box::leak(server_box);
 
         loop {
             let (socket, _) = listener.accept().await?;
