@@ -6,6 +6,7 @@ use crate::server::*;
 
 mod computer;
 mod server;
+mod response;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

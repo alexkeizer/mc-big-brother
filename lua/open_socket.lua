@@ -4,6 +4,7 @@
 -- imports
 --
 local component = require("component")
+local internet = require("internet")
 
 --
 -- configuration
@@ -17,7 +18,8 @@ end
 if (cfg == nil) then
     print("config.lua not found, falling back to defaults");
     cfg = {
-        server_addr = "0.tcp.ngrok.io:19382",
+        server_host = "127.0.0.1",
+        server_port = "7777",
         world = 0,
         dimension = 0,
         chunk_x = 0,
@@ -30,15 +32,61 @@ local max_retries = 3;
 --
 -- functions
 --
-function write_all(socket, msg)
-    while (string.len(msg) > 0) do
-        n = socket.write(msg);
-        if (n == nil) then
+function log(msg)
+    print(string.format("[%s] %s", os.date("%Y-%m-%d %X"), msg))
+end
+
+function log_response(msg)
+    log("RESPONSE: " .. msg)
+end
+
+function handle_responses(socket)
+    function handle()
+        -- handlers for all response codes
+        local handlers = {
+            [0] = function()
+                log_response("noop")
+            end
+        }
+
+
+        local code = socket:read(1);
+
+        -- If code is an empty string, there are no more responses to be handled
+        if code == nil or code:len() == 0 then
             return false;
         end
-        msg = string.sub(msg, n+1);
+
+
+        code = code:byte();
+        if handlers[code] then
+            handlers[code]()
+        else
+            log_response(string.format("illegal response code (%sd", code))
+        end
+
+        return true;
     end
-    return true;
+
+    -- We do "blocking" reads by setting the timeout to a very small value
+    local timeout = socket.readTimeout;
+    socket:setTimeout(0.1);
+
+
+    local res = true;
+    local value = "";
+    while (res and value) do
+        res, value = pcall(handle);
+    end
+
+    -- Restore timeout to original value
+    socket:setTimeout(timeout)
+
+    -- If the loop was broken with `res == false`, then `value` is an error
+    -- If the error was anything but a timeout, propagate
+    if (not res and not value:match("timeout")) then
+        error(value)
+    end
 end
 
 
@@ -47,30 +95,36 @@ end
 --
 function main()
     local retries = max_retries;
-    local addr = cfg.server_host .. cfg.server_addr
 
     while (true) do
-        print(string.format("Connecting to %s", cfg.server_addr))
+        print(string.format("Connecting to %s:%s", cfg.server_host, cfg.server_port));
 
         local pings = 0
-        local socket = component.internet.connect(cfg.server_addr);        
-        socket.finishConnect();
+        local socket = internet.open(cfg.server_host, cfg.server_port);
+        socket:setTimeout(2);
+
 
         -- u16, u16, i32, i32
         local header = string.pack(">I4I2I2i4i4", MAGIC, cfg.world, cfg.dimension, cfg.pos_x, cfg.pos_z)
 
-        if (write_all(socket, header)) then
-
-            while (write_all(socket, "\0")) do
+        if (socket:write(header) and socket:flush()) then
+            while (socket:write("\0") and socket:flush()) do
                 pings = pings + 1
-                print(string.format("[%s] Ping", os.date("%Y-%m-%d %X")))
-                os.sleep(1)    
+                log("Ping")
+
+                handle_responses(socket)
+
+                os.sleep(6)
+
+                if (pings > 5) then
+                    os.exit()
+                end
             end
         end
 
         if (pings < 3 and retries <= 0) then
             local delay = 8 + (math.random() * 4);
-            print(string.format("Server is down, waiting %f seconds before retrying", delay));
+            log(string.format("Server is down, waiting %f seconds before retrying", delay));
             os.sleep(delay);
         else 
             if (pings < 3 and retries > 0) then
@@ -83,7 +137,7 @@ function main()
 
 
 
-            print(string.format("Socket closed"))
+            log(string.format("Socket closed"))
         end
 
     end

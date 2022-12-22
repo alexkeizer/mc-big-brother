@@ -1,18 +1,26 @@
+use std::convert::Infallible;
 use std::error::Error;
 use std::time::Duration;
 
 use log::{info, warn};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
 
 use crate::Computer;
 
 use super::Server;
 
+const MAGIC: u32 = 0x6B7109BA;
+
 impl Server {
     async fn handle_connection(&self, mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
         info!("Handling new connection");
 
+        let magic = socket.read_u32().await?;
+        if magic != MAGIC {
+            warn!("Invalid magic bytes. Expected {MAGIC:x}, found {magic:x}");
+            return Ok(())
+        }
 
         let computer = Computer::from_socket(&mut socket).await?;
 
@@ -28,7 +36,7 @@ impl Server {
         loop {
             let mut buf = [0; 128];
             let read_fut = tokio::time::timeout(
-                Duration::from_secs(2),
+                Duration::from_secs(5),
                 socket.read(&mut buf),
             ).await;
 
@@ -56,13 +64,13 @@ impl Server {
                 }
             };
 
-            // let send_buf = [0; 256];
-            //
-            // // Try to write some data, to check the socket is still available
-            // if let Err(e) = socket.write_all(&send_buf).await {
-            //     warn!("failed to write to socket ({:?}); err = {:?}", computer, e);
-            //     break;
-            // }
+            let repeat = (std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis() % 4) as usize;
+            info!("Sending {repeat} no-op Pong(s) to {computer:?}");
+            let send_buf = [0u8; 1];
+            for _ in 0..repeat {
+                socket.write_all(&send_buf).await?;
+            }
+            socket.flush().await?;
         }
 
 
@@ -72,7 +80,7 @@ impl Server {
         Ok(())
     }
 
-    pub async fn run_tcp(&'static self, addr: impl ToSocketAddrs) -> Result<(), Box<dyn Error>> {
+    pub async fn run_tcp(&'static self, addr: impl ToSocketAddrs) -> Result<Infallible, Box<dyn Error>> {
         let listener = TcpListener::bind(addr).await?;
         info!("Bound socket to {}", listener.local_addr()?);
 

@@ -15,9 +15,9 @@ use tokio::io::AsyncReadExt;
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct Computer {
     pub world: u16,     // which (Minecraft) server
-    pub dimension: u8,  // the dimension (Overworld, End, Nether)
-    pub chunk_x: i32,
-    pub chunk_y: i32,
+    pub dimension: u16,  // the dimension (Overworld, End, Nether)
+    pub pos_x: i32,
+    pub pos_z: i32,
 }
 
 impl Computer {
@@ -25,9 +25,9 @@ impl Computer {
 
         Ok (Self {
             world : socket.read_u16().await?,
-            dimension: socket.read_u8().await?,
-            chunk_x: socket.read_i32().await?,
-            chunk_y: socket.read_i32().await?
+            dimension: socket.read_u16().await?,
+            pos_x: socket.read_i32().await?,
+            pos_z: socket.read_i32().await?
         })
     }
 }
