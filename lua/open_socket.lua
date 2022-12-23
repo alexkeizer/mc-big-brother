@@ -85,7 +85,6 @@ function handle_responses(socket)
     end
 end
 
-
 --
 -- configuration
 --

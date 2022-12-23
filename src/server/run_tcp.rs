@@ -1,38 +1,48 @@
 use std::convert::Infallible;
-use std::error::Error;
 use std::time::Duration;
 
 use log::{info, warn};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
 
-use crate::Computer;
-use crate::response::Response;
+use crate::ComputerData;
 
 use super::Server;
 
+
 const MAGIC: u32 = 0x6B7109BA;
 
+/// Reads the initial header sent by clients when establishing new connections
+/// Expected format (all ints in big-endian order):
+///     4 bytes                 magic value (must always be 0x6B7109BA)
+///     4 bytes unsigned int    client version
+///     2 bytes unsigned int    world     (i.e., minecraft server)
+///     2 bytes unsigned int    dimension
+///     4 bytes signed int      x coordinate
+///     4 bytes signed int      z coordinate
+async fn read_connection_header(socket: &mut TcpStream) -> anyhow::Result<ComputerData> {
+    let magic = socket.read_u32().await?;
+    if magic != MAGIC {
+        anyhow::bail!("Invalid magic bytes. Expected {MAGIC:x}, found {magic:x}");
+    }
+
+    Ok(ComputerData {
+        version: socket.read_u32().await?,
+        world: socket.read_u16().await?,
+        dimension: socket.read_u16().await?,
+        pos_x: socket.read_i32().await?,
+        pos_z: socket.read_i32().await?,
+    })
+}
 
 impl Server {
-    async fn handle_connection(&self, mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
+    async fn handle_connection(&self, mut socket: TcpStream) -> anyhow::Result<()> {
         info!("Handling new connection");
 
-        let magic = socket.read_u32().await?;
-        if magic != MAGIC {
-            warn!("Invalid magic bytes. Expected {MAGIC:x}, found {magic:x}");
-            return Ok(())
-        }
-
-        let computer = Computer::from_socket(&mut socket).await?;
+        let data = read_connection_header(&mut socket).await?;
+        let computer = self.computer_repo.upsert(data).await?;
 
         info!("New connection from {:?}", computer);
-
-        {
-            self.online_computers.lock()
-                .await
-                .insert(computer);
-        }
 
         // In a loop, read data from the socket and write the data back.
         loop {
@@ -62,49 +72,16 @@ impl Server {
                     }
                     Ok(_) => {
                         info!("POLL from {:?}", computer);
+                        self.computer_repo.insert_ping(&computer).await?;
                     }
                 }
             };
-
-            let time = (std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis()) as usize;
-            let r: Response = match time % 3 {
-                0 => {
-                    info!("Sending no-op Pong to {computer:?}");
-                    Response::Noop
-                }
-                1 => {
-                    info!("Sending print code to {computer:?}");
-                    Response::Eval(r#"
-                        print("Hello world!");
-                    "#.into())
-                }
-                2 => {
-                    info!("Sending reboot code to {computer:?}");
-                    Response::Eval(r#"
-                        print("Hello world!");
-                        print("We're going to restart your computer in 5 seconds");
-                    "#.into())
-                }
-                _ => {
-                    unreachable!();
-                }
-            };
-            r.send_over(&mut socket).await?;
-
-
-
-
-            socket.flush().await?;
         }
 
-
-        self.online_computers.lock()
-            .await
-            .remove(&computer);
         Ok(())
     }
 
-    pub async fn run_tcp(&'static self, addr: impl ToSocketAddrs) -> Result<Infallible, Box<dyn Error>> {
+    pub async fn run_tcp(&'static self, addr: impl ToSocketAddrs) -> anyhow::Result<Infallible> {
         let listener = TcpListener::bind(addr).await?;
         info!("Bound socket to {}", listener.local_addr()?);
 
@@ -116,7 +93,7 @@ impl Server {
                     match self.handle_connection(socket).await {
                         Ok(_) => {}
                         Err(e) => {
-                            warn!("{}", e)
+                            warn!("Connection died unexpectedly: {}", e)
                         }
                     };
                 }
