@@ -14,8 +14,9 @@ use tokio::io::AsyncReadExt;
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct Computer {
-    pub world: u16,     // which (Minecraft) server
-    pub dimension: u16,  // the dimension (Overworld, End, Nether)
+    pub version: u32,       // The version of `open_socket` script this computer is running
+    pub world: u16,         // which (Minecraft) server
+    pub dimension: u16,     // the dimension (Overworld, End, Nether)
     pub pos_x: i32,
     pub pos_z: i32,
 }
@@ -24,6 +25,7 @@ impl Computer {
     pub async fn from_socket(socket : &mut TcpStream) -> Result<Self, Box<dyn Error>> {
 
         Ok (Self {
+            version: socket.read_u32().await?,
             world : socket.read_u16().await?,
             dimension: socket.read_u16().await?,
             pos_x: socket.read_i32().await?,

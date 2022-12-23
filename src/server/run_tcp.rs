@@ -7,10 +7,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
 
 use crate::Computer;
+use crate::response::Response;
 
 use super::Server;
 
 const MAGIC: u32 = 0x6B7109BA;
+
 
 impl Server {
     async fn handle_connection(&self, mut socket: TcpStream) -> Result<(), Box<dyn Error>> {
@@ -64,12 +66,34 @@ impl Server {
                 }
             };
 
-            let repeat = (std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis() % 4) as usize;
-            info!("Sending {repeat} no-op Pong(s) to {computer:?}");
-            let send_buf = [0u8; 1];
-            for _ in 0..repeat {
-                socket.write_all(&send_buf).await?;
-            }
+            let time = (std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_millis()) as usize;
+            let r: Response = match time % 3 {
+                0 => {
+                    info!("Sending no-op Pong to {computer:?}");
+                    Response::Noop
+                }
+                1 => {
+                    info!("Sending print code to {computer:?}");
+                    Response::Eval(r#"
+                        print("Hello world!");
+                    "#.into())
+                }
+                2 => {
+                    info!("Sending reboot code to {computer:?}");
+                    Response::Eval(r#"
+                        print("Hello world!");
+                        print("We're going to restart your computer in 5 seconds");
+                    "#.into())
+                }
+                _ => {
+                    unreachable!();
+                }
+            };
+            r.send_over(&mut socket).await?;
+
+
+
+
             socket.flush().await?;
         }
 

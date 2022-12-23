@@ -1,39 +1,20 @@
-
-
 --
 -- imports
 --
 local component = require("component")
 local internet = require("internet")
 
---
--- configuration
---
-local MAGIC = 0x6B7109BA
-local cfg = loadfile("config.lua")
-if (cfg ~= nil) then
-    cfg = cfg()
-end
-
-if (cfg == nil) then
-    print("config.lua not found, falling back to defaults");
-    cfg = {
-        server_host = "127.0.0.1",
-        server_port = "7777",
-        world = 0,
-        dimension = 0,
-        chunk_x = 0,
-        chunk_y = 0,
-    }
-end
-
-local max_retries = 3;
 
 --
 -- functions
 --
+local logfile = io.open("/home/skydaddy.log", "a");
+
 function log(msg)
-    print(string.format("[%s] %s", os.date("%Y-%m-%d %X"), msg))
+    logfile:write(
+        string.format("[%s] %s\n", os.date("%Y-%m-%d %X"), msg)
+    )
+    logfile:flush();
 end
 
 function log_response(msg)
@@ -44,9 +25,24 @@ function handle_responses(socket)
     function handle()
         -- handlers for all response codes
         local handlers = {
-            [0] = function()
+            -- noop
+            [0] = function(socket)
                 log_response("noop")
-            end
+            end,
+
+            -- eval
+            [1] = function(socket)
+                local n = socket:read(4);
+                n = string.unpack(">I4", n);
+
+                local data = socket:read(n);
+                local f = load(data);
+
+                local reboot = f();
+                if (reboot == true) then
+                    os.execute("reboot");
+                end
+            end,
         }
 
 
@@ -60,7 +56,7 @@ function handle_responses(socket)
 
         code = code:byte();
         if handlers[code] then
-            handlers[code]()
+            handlers[code](socket)
         else
             log_response(string.format("illegal response code (%sd", code))
         end
@@ -91,13 +87,38 @@ end
 
 
 --
+-- configuration
+--
+local MAGIC = 0x6B7109BA
+local version = loadfile("/home/skydaddy/VERSION.lua")()
+local cfg = loadfile("/home/skydaddy/config.lua")
+if (cfg ~= nil) then
+    cfg = cfg()
+end
+
+if (cfg == nil) then
+    log("config.lua not found, falling back to defaults");
+    cfg = {
+        server_host = "127.0.0.1",
+        server_port = "7777",
+        world = 0,
+        dimension = 0,
+        chunk_x = 0,
+        chunk_y = 0,
+    }
+end
+
+local max_retries = 3;
+
+
+--
 -- main code
 --
 function main()
     local retries = max_retries;
 
     while (true) do
-        print(string.format("Connecting to %s:%s", cfg.server_host, cfg.server_port));
+        log(string.format("Connecting to %s:%s", cfg.server_host, cfg.server_port));
 
         local pings = 0
         local socket = internet.open(cfg.server_host, cfg.server_port);
@@ -105,7 +126,7 @@ function main()
 
 
         -- u16, u16, i32, i32
-        local header = string.pack(">I4I2I2i4i4", MAGIC, cfg.world, cfg.dimension, cfg.pos_x, cfg.pos_z)
+        local header = string.pack(">I4I4I2I2i4i4", MAGIC, version, cfg.world, cfg.dimension, cfg.pos_x, cfg.pos_z)
 
         if (socket:write(header) and socket:flush()) then
             while (socket:write("\0") and socket:flush()) do
@@ -114,7 +135,7 @@ function main()
 
                 handle_responses(socket)
 
-                os.sleep(6)
+                os.sleep(3)
 
                 if (pings > 5) then
                     os.exit()
