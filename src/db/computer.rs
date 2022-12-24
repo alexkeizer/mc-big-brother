@@ -24,8 +24,8 @@ ON CONFLICT
 RETURNING id;
             ",
             data.version,
-            data.world,
-            data.dimension,
+            data.world.0,
+            data.dimension.0,
             data.pos_x,
             data.pos_z,
             )

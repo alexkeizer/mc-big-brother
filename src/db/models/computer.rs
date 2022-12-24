@@ -1,23 +1,18 @@
-// #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
-// #[repr(u8)]
-// #[non_exhaustive]
-// pub enum Dimension {
-//     Overworld = 0,
-//     Nether = 1,
-//     End = 2,
-// }
+use crate::db::models::dimension::DimensionId;
+use crate::db::models::world::WorldId;
 
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, sqlx::Encode)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct ComputerId(u32);
+
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
 pub struct ComputerData {
+    /// The version of `open_socket` script this computer is running
     pub version: u32,
-    // The version of `open_socket` script this computer is running
-    pub world: u16,
-    // which (Minecraft) server
-    pub dimension: u16,
-    // the dimension (Overworld, End, Nether)
+    /// which (Minecraft) server
+    pub world: WorldId,
+    /// the dimension (Overworld, End, Nether)
+    pub dimension: DimensionId,
     pub pos_x: i32,
     pub pos_z: i32,
 }

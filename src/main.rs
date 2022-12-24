@@ -1,7 +1,8 @@
 use std::net::SocketAddr;
 
-use crate::db::models::computer::*;
+use crate::db::models;
 use crate::server::*;
+use models::*;
 
 mod db;
 mod server;

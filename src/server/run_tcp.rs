@@ -5,9 +5,7 @@ use log::{info, warn};
 use tokio::io::{AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
 
-use crate::ComputerData;
-
-use super::Server;
+use crate::*;
 
 
 const MAGIC: u32 = 0x6B7109BA;
@@ -17,7 +15,7 @@ const MAGIC: u32 = 0x6B7109BA;
 ///     4 bytes                 magic value (must always be 0x6B7109BA)
 ///     4 bytes unsigned int    client version
 ///     2 bytes unsigned int    world     (i.e., minecraft server)
-///     2 bytes unsigned int    dimension
+///     2 bytes signed int      dimension (e.g., 0 for Overworld, 1 for End, -1 for Nether)
 ///     4 bytes signed int      x coordinate
 ///     4 bytes signed int      z coordinate
 async fn read_connection_header(socket: &mut TcpStream) -> anyhow::Result<ComputerData> {
@@ -28,8 +26,8 @@ async fn read_connection_header(socket: &mut TcpStream) -> anyhow::Result<Comput
 
     Ok(ComputerData {
         version: socket.read_u32().await?,
-        world: socket.read_u16().await?,
-        dimension: socket.read_u16().await?,
+        world: WorldId(socket.read_u16().await?),
+        dimension: DimensionId(socket.read_i16().await?),
         pos_x: socket.read_i32().await?,
         pos_z: socket.read_i32().await?,
     })
