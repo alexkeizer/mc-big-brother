@@ -134,11 +134,7 @@ function main()
 
                 handle_responses(socket)
 
-                os.sleep(3)
-
-                if (pings > 5) then
-                    os.exit()
-                end
+                os.sleep(2)
             end
         end
 
