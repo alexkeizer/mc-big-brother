@@ -5,9 +5,7 @@ local script=[==[
 local thread = require("thread")
 
 function start()
-    thread.create(function()
-        loadfile("/home/skydaddy/open_socket.lua")()
-    end)
+    loadfile("/home/skydaddy/open_socket.lua")()
 end
 
 ]==]

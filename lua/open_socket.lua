@@ -3,6 +3,7 @@
 --
 local component = require("component")
 local internet = require("internet")
+local thread = require("thread")
 
 
 --
@@ -159,4 +160,4 @@ function main()
     end
 end
 
-main()
+thread.create(main)
