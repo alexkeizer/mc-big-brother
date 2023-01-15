@@ -41,6 +41,7 @@ function handle_responses(socket)
 
                 local reboot = f();
                 if (reboot == true) then
+
                     os.execute("reboot");
                 end
             end,
