@@ -44,6 +44,135 @@ impl Server {
 
         // In a loop, read data from the socket and write the data back.
         loop {
+
+
+            //commands preferably just execute file
+            let resmsg =r###"
+                    local component = require("component")
+                    local geolyzer = component.geolyzer
+                    local robot = component.robot
+
+                    local version = loadfile("/home/skydaddy/VERSION.lua")()
+                    if version > 0 then
+                        return true
+                    end
+                    file_descriptor = io.open("/home/skydaddy/config.lua", "w")
+                    file_descriptor:write([[return {
+                           -- server_host = 'keizer.dev',
+                           server_host = '80.112.165.44',
+                           server_port = 7777,
+                           world = 1,
+                           dimension = 1,
+                           pos_x = -300,
+                           pos_z = -700,
+                           pos_y = 201,
+                       }]])
+file_descriptor:close()
+
+local offsetx = -2
+local offsetz = -2
+local offsety = 0
+
+local sizex = 5
+local sizez = 5
+local sizey = 1
+
+local map = {}
+local i = 1
+--scan deployment area
+for offsety = 1,14 do
+    local scanData = geolyzer.scan(offsetx, offsetz, offsety, sizex, sizez, sizey)
+    local j = 1
+    for y = 0, sizey - 1 do
+        for z = 0, sizez - 1 do
+            for x = 0, sizex - 1 do
+                -- alternatively when thinking in terms of 3-dimensional table: map[offsety + y][offsetz + z][offsetx + x] = scanData[i]
+                map[i] = {posx = offsetx + x, posy = offsety + y, posz = offsetz + z, hardness = scanData[j]}
+                j = j +1
+                i = i + 1
+
+            end
+        end
+    end
+end
+
+local y = 13
+local posx1,posz1 = 0,0
+local posx2,posz2 = 0,0
+
+-- deploment area tower n bots high topped with 2 blocks pointing north
+-- find Y level bot and direction
+for offsety = 1,13 do
+    local j = sizex*sizez*sizey*offsety
+    local block = false
+    for i = 1, sizex*sizez*sizey do
+        if map[i + j].hardness > 3 then
+            block = true
+            posx2,posz2 = posx1,posz1
+            posx1,posz1 = map[i + j].posx, map[i + j].posz
+
+        end
+    end
+    if not block then
+        y = y - offsety
+        if posx1 == 0 then
+           if posz1 == 1 then
+            side = 2
+           else
+            side = 3
+           end
+        elseif posx1 == 1 then
+            side = 4
+        else
+            side = 5
+        end
+        break
+    end
+
+
+end
+
+--define new target pos by y bot
+local spacing = 11
+local chunk = 16
+local moves = (y - offsety)*spacing*chunk
+local cfg = loadfile("/home/skydaddy/config.lua")()
+local mov_x = 0
+local mov_z = 0
+if side == 2 then
+    mov_z = -moves
+elseif side == 3 then
+    mov_z = moves
+elseif side == 4 then
+    mov_x = -moves
+elseif side == 5 then
+    mov_x = moves
+end
+local pos_x = cfg.pos_x + mov_x + posx1
+local pos_z = cfg.pos_z + mov_z  + posz1
+local pos_y  = cfg.pos_y + y - offsety
+for i =  1,moves do  while not robot.move(3) do end   end
+                       file_descriptor = io.open("/home/skydaddy/config.lua", "w")
+                        file_descriptor:write([[return {
+                           -- server_host = 'keizer.dev',
+                           server_host = '80.112.165.44',
+                           server_port = 7777,
+                           world = 1,
+                           dimension = 1,
+                           pos_x = ]] ..  pos_x .. [[,
+                           pos_z = ]] ..  pos_z .. [[,
+                           pos_y = ]] ..  pos_y .. [[,
+                       }]])
+                       file_descriptor:close()
+
+                       file_descriptor = io.open("/home/skydaddy/VERSION.lua", "w")
+                       file_descriptor:write([[return 1;]])
+                       file_descriptor:close()
+                       return true"###;
+            let  res = EvalResponse::from(resmsg);
+
+            Response::Eval(res).send_over(&mut socket).await;
+
             let mut buf = [0; 128];
             let read_fut = tokio::time::timeout(
                 Duration::from_secs(5),
@@ -71,9 +200,12 @@ impl Server {
                     Ok(_) => {
                         info!("POLL from {:?}", computer);
                         self.computer_repo.insert_ping(&computer).await?;
+
+
                     }
                 }
             };
+
         }
 
         Ok(())
@@ -89,7 +221,9 @@ impl Server {
             tokio::spawn(
                 async {
                     match self.handle_connection(socket).await {
-                        Ok(_) => {}
+                        Ok(_) => {
+
+                        }
                         Err(e) => {
                             warn!("Connection died unexpectedly: {}", e)
                         }

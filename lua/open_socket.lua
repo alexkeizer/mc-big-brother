@@ -127,7 +127,7 @@ function main()
 
 
         -- u16, u16, i32, i32
-        local header = string.pack(">I4I4I2i2i4i4", MAGIC, version, cfg.world, cfg.dimension, cfg.pos_x, cfg.pos_z)
+        local header = string.pack(">I4I4I2i2i4i4i4", MAGIC, version, cfg.world, cfg.dimension, cfg.pos_x, cfg.pos_z, cfg.pos_y)
 
         if (socket:write(header) and socket:flush()) then
             while (socket:write("\0") and socket:flush()) do
